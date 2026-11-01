@@ -1,0 +1,81 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us</title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+
+    .whatsapp-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 17px 32px;
+      background: #25D366;
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 17px;
+      font-weight: 600;
+      border-radius: 50px;
+      box-shadow: 0 8px 25px rgba(37, 211, 102, 0.25);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .whatsapp-btn:hover {
+      background: #1ebe5d;
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(37, 211, 102, 0.35);
+    }
+
+    .whatsapp-btn svg {
+      width: 23px;
+      height: 23px;
+      fill: currentColor;
+    }
+
+    @media (max-width: 480px) {
+      .whatsapp-btn {
+        padding: 15px 25px;
+        font-size: 15px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <a href="#" class="whatsapp-btn" id="whatsappBtn" target="_blank">
+    <svg viewBox="0 0 32 32">
+      <path d="M16 .5C7.45.5.5 7.45.5 16c0 2.73.72 5.41 2.08 7.77L.5 31.5l7.92-2.08A15.43 15.43 0 0 0 16 31.5c8.55 0 15.5-6.95 15.5-15.5S24.55.5 16 .5zm0 28.17c-2.36 0-4.68-.63-6.7-1.83l-.48-.28-4.7 1.23 1.25-4.58-.31-.5A12.62 12.62 0 1 1 16 28.67zm6.93-9.45c-.38-.19-2.24-1.1-2.59-1.22-.35-.13-.6-.19-.85.19-.25.37-.97 1.22-1.19 1.47-.22.25-.44.28-.82.09-.38-.19-1.61-.59-3.07-1.88-1.13-1.01-1.89-2.25-2.11-2.63-.22-.37-.02-.57.17-.75.17-.17.38-.44.57-.66.19-.22.25-.38.38-.63.12-.25.06-.47-.03-.66-.1-.19-.85-2.05-1.16-2.81-.3-.74-.61-.64-.85-.65h-.73c-.25 0-.66.09-1 .47-.35.38-1.32 1.29-1.32 3.14 0 1.85 1.35 3.64 1.54 3.89.19.25 2.66 4.06 6.45 5.7.9.39 1.6.62 2.14.79.9.29 1.72.25 2.37.15.72-.11 2.24-.91 2.56-1.79.32-.88.32-1.63.22-1.79-.1-.16-.35-.25-.73-.44z"/>
+    </svg>
+    Contact Us on WhatsApp
+  </a>
+
+  <script>
+    const phoneNumber = "919876543210"; // Replace with your WhatsApp number
+    const message = "Hello, I want to know more.";
+
+    document.getElementById("whatsappBtn").href =
+      `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+  </script>
+
+</body>
+</html>

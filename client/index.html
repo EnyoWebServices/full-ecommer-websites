@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="https://cdn-icons-png.flaticon.com/512/168/168755.png" />
+    <link rel="icon" type="image/svg+xml" href="./public/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FlipKart</title>
+   <title>Diwali Offers & Online Shopping | New Brain Quiz</title>
     <script>
       !function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -14,7 +14,11 @@
       t.src=v;s=b.getElementsByTagName(e)[0];
       s.parentNode.insertBefore(t,s)}(window, document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', '2551373001998796');
+
+      const facebookPixelId = '%VITE_FACEBOOK_PIXEL_ID%' || '1138506905200700';
+      if (facebookPixelId) {
+        fbq('init', facebookPixelId);
+      }
     </script>
     <link
       rel="stylesheet"
