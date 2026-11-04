@@ -3,56 +3,34 @@ import "./css/orderSuccess.css"
 import Header from '../components/Header/Header'
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SingleOrderApi } from '../service/Api'
+import { trackMetaPurchase } from '../utils/metaPixel'
 
 const OrderSuccess = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams()
     const orderId = searchParams.get('orderId')
     const [order, setOrder] = useState(null)
+    const [orderLoadError, setOrderLoadError] = useState('')
 
     useEffect(() => {
         if (!orderId) return
         let cancelled = false
         SingleOrderApi(orderId).then(savedOrder => {
-            if (!cancelled) setOrder(savedOrder)
-        }).catch(() => {})
+            if (!cancelled) {
+                setOrder(savedOrder)
+                setOrderLoadError('')
+            }
+        }).catch(error => {
+            if (cancelled) return
+            console.error('Could not load the order payment status.', error)
+            setOrderLoadError(error.response?.data?.message || 'Could not load the payment status. Please refresh to try again.')
+        })
         return () => { cancelled = true }
     }, [orderId])
 
     useEffect(() => {
-        const paymentStatus = String(order?.paymentDetails?.status || '').toUpperCase()
-        const value = Number(order?.totalPrice)
-        if (!orderId || !['PAID', 'COMPLETED'].includes(paymentStatus) || !Number.isFinite(value) || value <= 0 || typeof window.fbq !== 'function') {
-            return
-        }
-
-        const storageKey = `meta-purchase-tracked-${orderId}`
-        try {
-            if (window.localStorage.getItem(storageKey)) return
-        } catch (error) {
-            console.error('Could not check whether the Meta Purchase event was already sent.', error)
-            return
-        }
-
-        window.fbq('track', 'Purchase', {
-            value,
-            currency: 'INR',
-            order_id: orderId,
-            content_type: 'product',
-            content_ids: order.items.map(item => String(item.productId)),
-            contents: order.items.map(item => ({
-                id: String(item.productId),
-                quantity: item.quantity,
-                item_price: item.price
-            }))
-        })
-
-        try {
-            window.localStorage.setItem(storageKey, 'true')
-        } catch (error) {
-            console.error('Could not save Meta Purchase event deduplication state.', error)
-        }
-    }, [order, orderId])
+        trackMetaPurchase(order)
+    }, [order])
 
     const paymentStatus = order?.paymentDetails?.status || 'PENDING'
     const failed = order?.status === 'PAYMENT_FAILED' || paymentStatus === 'FAILED'
@@ -69,11 +47,12 @@ const OrderSuccess = () => {
                     <p className="success-subtitle">
                         {failed ? 'The store could not verify this UPI payment. Check My Orders for the latest status.' : 'Your order is in My Orders, where you can track its status.'}
                     </p>
+                    {orderLoadError && <p role="alert">{orderLoadError}</p>}
 
                     <div className="delivery-box">
                         <p><strong>Estimated Delivery:</strong> 3–5 Business Days</p>
                         {orderId && <p><strong>Order ID:</strong> {orderId}</p>}
-                        <p><strong>Payment Status:</strong> {paymentStatus === 'PAID' ? 'Paid' : paymentStatus === 'FAILED' ? 'Failed' : 'Pending store verification'}</p>
+                        <p><strong>Payment Status:</strong> {['PAID', 'COMPLETED'].includes(paymentStatus) ? 'Paid' : paymentStatus === 'FAILED' ? 'Failed' : 'Pending store verification'}</p>
                     </div>
 
                     <div className="success-buttons">

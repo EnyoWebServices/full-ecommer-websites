@@ -2,13 +2,17 @@ const { sendMailWithSmtpSettings } = require("../config/nodeMailer");
 const Otp = require("../models/otp");
 const crypto = require("crypto");
 const User = require("../models/user");
-const jwt = require("jsonwebtoken");
 const wrapAsync = require("../utils/wrapAsync");
 const { getOtpEmailSettings } = require("../service/smtpSettings");
 const { renderOtpEmail, renderOtpEmailText } = require("../service/otpEmailTemplate");
 const { hashOtp, isOtpValid } = require("../service/otpVerification");
 const { createEmailOnlyAccountDetails } = require("../service/emailOnlyAccount");
 const bcrypt = require("bcryptjs");
+const {
+    createAccessToken,
+    createRefreshToken,
+    setRefreshTokenCookie
+} = require("../service/authTokens");
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_RESEND_INTERVAL_MS = 30 * 1000;
@@ -222,15 +226,9 @@ module.exports.VerifyOtp = wrapAsync(async (req, res) => {
         await Otp.deleteMany({ userId: existingUser._id })
     }
 
-    const accessToken = jwt.sign({ _id: existingUser._id, role: existingUser.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "20m" })
-    const refreshToken = jwt.sign({ _id: existingUser._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "7d" })
-
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    const accessToken = createAccessToken(existingUser)
+    const refreshToken = createRefreshToken(existingUser)
+    setRefreshTokenCookie(res, refreshToken)
 
     return res.status(200).json({
         success: true, message: "Login Successfull", token: accessToken, resUser: {

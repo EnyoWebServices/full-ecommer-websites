@@ -2,22 +2,50 @@ import "./css/OrderDetail.css";
 import Header from "../components/Header/Header";
 import Footer from "../components/Footer/Footer";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { SingleOrderApi } from "../service/Api";
+import { trackMetaPurchase } from "../utils/metaPixel";
 
 const OrderDetail = () => {
-    const navigate = useNavigate();
-
     const [order, setOrder] = useState(null)
+    const [orderLoadError, setOrderLoadError] = useState('')
+    const [reloadCount, setReloadCount] = useState(0)
     const { id } = useParams()
 
     useEffect(() => {
+        let cancelled = false
+        setOrder(null)
+        setOrderLoadError('')
         const getOrder = async () => {
-            const order = await SingleOrderApi(id)
-            setOrder(order)
+            try {
+                const loadedOrder = await SingleOrderApi(id)
+                if (!cancelled) setOrder(loadedOrder)
+            } catch (error) {
+                if (cancelled) return
+                console.error('Could not load order details.', error)
+                setOrderLoadError(error.response?.data?.message || 'Could not load order details. Please try again.')
+            }
         }
         getOrder();
-    }, [id])
+        return () => { cancelled = true }
+    }, [id, reloadCount])
+
+    useEffect(() => {
+        trackMetaPurchase(order)
+    }, [order])
+
+    if (orderLoadError) {
+        return (
+            <>
+                <Header />
+                <div className="order-details-page" role="alert">
+                    <p>{orderLoadError}</p>
+                    <button type="button" onClick={() => setReloadCount(count => count + 1)}>Retry</button>
+                </div>
+                <Footer />
+            </>
+        )
+    }
 
     if (!order) {
         return (

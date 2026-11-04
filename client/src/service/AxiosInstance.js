@@ -1,7 +1,8 @@
 import axios from "axios"
-import { logOutUser, updateToken, } from "../redux/features/UserSlice"
+import { clearSession, updateToken } from "../redux/features/UserSlice"
 
-let reduxStore;
+let reduxStore
+let refreshPromise
 
 export const injectStore = (store) => {
     reduxStore = store
@@ -14,7 +15,35 @@ const axiosInstance = axios.create({
     withCredentials: true
 })
 
-// Attach access token
+const shouldSkipRefresh = (url = "") => [
+    "/login",
+    "/signup",
+    "/verify-otp",
+    "/firebase-login",
+    "/send-otp",
+    "/signup/send-otp",
+    "/refresh",
+    "/logout"
+].some(path => url.endsWith(path))
+
+const refreshAccessToken = () => {
+    if (!refreshPromise) {
+        refreshPromise = axiosInstance.post("/refresh")
+            .then(({ data }) => {
+                if (!data?.token) {
+                    throw new Error("Refresh response did not include an access token")
+                }
+                if (reduxStore) reduxStore.dispatch(updateToken(data.token))
+                else localStorage.setItem("flipkart_token", data.token)
+                return data.token
+            })
+            .finally(() => {
+                refreshPromise = null
+            })
+    }
+    return refreshPromise
+}
+
 axiosInstance.interceptors.request.use((config) => {
     const token = reduxStore?.getState()?.user?.token || localStorage.getItem("flipkart_token")
     if (token) {
@@ -23,32 +52,33 @@ axiosInstance.interceptors.request.use((config) => {
     return config
 })
 
-// Refresh token automatically
 axiosInstance.interceptors.response.use(
-    (res) => res,
-    async (err) => {
-        const originalRequest = err.config
-
-        if (err.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes("/refresh")) {
-            originalRequest._retry = true
-            try {
-                const res = await axiosInstance.post("/refresh")
-
-                if (res.data?.token) {
-                    localStorage.setItem("flipkart_token", res.data.token)
-                    reduxStore.dispatch(updateToken(res.data.token))
-
-                    originalRequest.headers.Authorization =
-                        `Bearer ${res.data.token}`
-
-                    return axiosInstance(originalRequest)
-                }
-            } catch {
-                localStorage.removeItem("flipkart_token")
-                reduxStore.dispatch(logOutUser())
-            }
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config
+        if (
+            error.response?.status !== 401 ||
+            !originalRequest ||
+            originalRequest._retry ||
+            shouldSkipRefresh(originalRequest.url)
+        ) {
+            return Promise.reject(error)
         }
-        return Promise.reject(err)
+
+        originalRequest._retry = true
+        try {
+            const token = await refreshAccessToken()
+            originalRequest.headers = originalRequest.headers || {}
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return axiosInstance(originalRequest)
+        } catch (refreshError) {
+            if (reduxStore) reduxStore.dispatch(clearSession())
+            else {
+                localStorage.removeItem("flipkart_token")
+                localStorage.removeItem("flipkart_user")
+            }
+            return Promise.reject(refreshError)
+        }
     }
 )
 

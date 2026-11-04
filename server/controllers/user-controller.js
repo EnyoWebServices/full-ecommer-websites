@@ -5,28 +5,17 @@ const Otp = require("../models/otp");
 const wrapAsync = require("../utils/wrapAsync");
 const { verifyFirebaseIdToken } = require("../service/firebaseAdmin");
 const { isOtpValid } = require("../service/otpVerification");
-
-//Helper Functions
-const createAccessToken = (user) => {
-    return jwt.sign(
-        { _id: user._id, role: user.role },
-        process.env.ACCESS_TOKEN_SECRET,
-        { expiresIn: "20m" }
-    );
-};
-
-const createRefreshToken = (user) => {
-    return jwt.sign(
-        { _id: user._id },
-        process.env.REFRESH_TOKEN_SECRET,
-        { expiresIn: "7d" }
-    );
-};
-
+const {
+    createAccessToken,
+    createRefreshToken,
+    setRefreshTokenCookie,
+    clearRefreshTokenCookie
+} = require("../service/authTokens");
 
 //Get Me Controller
 module.exports.getMe = wrapAsync(async (req, res) => {
     let userId = req.user?._id
+    let shouldRefreshAccessToken = false
 
     if (!userId) {
         const authHeader = req.headers.authorization;
@@ -47,6 +36,7 @@ module.exports.getMe = wrapAsync(async (req, res) => {
             try {
                 const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
                 userId = decoded._id;
+                shouldRefreshAccessToken = true
             } catch (refreshErr) {
                 userId = null;
             }
@@ -63,7 +53,7 @@ module.exports.getMe = wrapAsync(async (req, res) => {
         return res.status(404).json({ message: "User not found", success: false })
     }
 
-    res.status(200).json({
+    const response = {
         resUser: {
             _id: user._id,
             name: user.name,
@@ -73,6 +63,15 @@ module.exports.getMe = wrapAsync(async (req, res) => {
             addresses: user.addresses,
             selectedAddressId: user.selectedAddressId
         }
+    }
+
+    if (shouldRefreshAccessToken) {
+        response.token = createAccessToken(user)
+        setRefreshTokenCookie(res, createRefreshToken(user))
+    }
+
+    res.status(200).json({
+        ...response
     })
 })
 
@@ -181,12 +180,7 @@ module.exports.signup = wrapAsync(async (req, res) => {
     const accessToken = createAccessToken(savedUser);
     const refreshToken = createRefreshToken(savedUser);
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    setRefreshTokenCookie(res, refreshToken)
 
     const resUser = {
         _id: savedUser._id,
@@ -239,12 +233,7 @@ module.exports.login = wrapAsync(async (req, res) => {
     const accessToken = createAccessToken(existingUser);
     const refreshToken = createRefreshToken(existingUser);
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    setRefreshTokenCookie(res, refreshToken)
 
     res.status(200).json({
         message: `Welcome Back ${existingUser.name}`,
@@ -263,7 +252,7 @@ module.exports.firebasePhoneLogin = wrapAsync(async (req, res) => {
     let firebaseUser;
     try {
         firebaseUser = await verifyFirebaseIdToken(idToken);
-    } catch (error) {
+    } catch {
         return res.status(401).json({ success: false, message: "Firebase phone verification failed" });
     }
 
@@ -281,12 +270,7 @@ module.exports.firebasePhoneLogin = wrapAsync(async (req, res) => {
 
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    setRefreshTokenCookie(res, refreshToken)
 
     return res.status(200).json({
         success: true,
@@ -305,26 +289,25 @@ module.exports.firebasePhoneLogin = wrapAsync(async (req, res) => {
 
 //LogOut Route
 module.exports.logOutUser = (req, res) => {
-    res.clearCookie("refreshToken", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    });
+    clearRefreshTokenCookie(res)
     res.status(200).json({ message: "Logged Out Successfully" })
 }
 
 //Refresh Token Route
 module.exports.refreshToken = wrapAsync(async (req, res) => {
-    const refreshToken = req.cookies.refreshToken
+    const refreshToken = req.cookies?.refreshToken
 
     if (!refreshToken) {
         return res.status(401).json({ message: "No refresh token" })
     }
 
-    const decoded = jwt.verify(
-        refreshToken,
-        process.env.REFRESH_TOKEN_SECRET
-    )
+    let decoded
+    try {
+        decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
+    } catch {
+        clearRefreshTokenCookie(res)
+        return res.status(401).json({ message: "Refresh token is invalid or expired" })
+    }
 
     const user = await User.findById(decoded._id)
     if (!user) {
@@ -332,6 +315,7 @@ module.exports.refreshToken = wrapAsync(async (req, res) => {
     }
 
     const newAccessToken = createAccessToken(user)
+    setRefreshTokenCookie(res, createRefreshToken(user))
 
     res.status(200).json({
         token: newAccessToken

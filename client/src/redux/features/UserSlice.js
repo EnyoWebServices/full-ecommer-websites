@@ -10,11 +10,14 @@ export const fetchMe = createAsyncThunk(
             const currentToken = localStorage.getItem("flipkart_token")
             return {
                 user: data.resUser,
-                token: currentToken
+                token: data.token || currentToken
             }
         }  catch (error) {
             return rejectWithValue(
-                error.response?.data?.message || "Session expired"
+                {
+                    message: error.response?.data?.message || "Session check failed",
+                    status: error.response?.status
+                }
             )
         }
     }
@@ -106,6 +109,14 @@ const userSlice = createSlice({
         message: null
     },
     reducers: {
+        clearSession(state) {
+            state.user = null
+            state.token = null
+            state.authenticated = false
+            state.loading = false
+            localStorage.removeItem("flipkart_token")
+            localStorage.removeItem("flipkart_user")
+        },
         updateToken(state, action) {
             state.token = action.payload
             state.authenticated = true
@@ -135,14 +146,20 @@ const userSlice = createSlice({
                 if (action.payload.user) {
                     localStorage.setItem("flipkart_user", JSON.stringify(action.payload.user))
                 }
+                if (action.payload.token) {
+                    localStorage.setItem("flipkart_token", action.payload.token)
+                }
             })
-            .addCase(fetchMe.rejected, (state) => {
-                state.user = null
-                state.token = null
-                state.authenticated = false
+            .addCase(fetchMe.rejected, (state, action) => {
                 state.loading = false
-                localStorage.removeItem("flipkart_token")
-                localStorage.removeItem("flipkart_user")
+                state.error = action.payload?.message || null
+                if ([401, 404].includes(action.payload?.status)) {
+                    state.user = null
+                    state.token = null
+                    state.authenticated = false
+                    localStorage.removeItem("flipkart_token")
+                    localStorage.removeItem("flipkart_user")
+                }
             })
 
             //Login
@@ -204,8 +221,6 @@ const userSlice = createSlice({
             })
             .addCase(logOutUser.rejected, (state) => {
                 state.loading = false;
-                localStorage.removeItem("flipkart_token")
-                localStorage.removeItem("flipkart_user")
             })
 
             //Verify OTP
@@ -240,5 +255,5 @@ const userSlice = createSlice({
     }
 })
 
-export const { updateDeliveryAddresses, updateToken } = userSlice.actions
+export const { clearSession, updateDeliveryAddresses, updateToken } = userSlice.actions
 export default userSlice.reducer

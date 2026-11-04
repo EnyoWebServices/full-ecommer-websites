@@ -8,7 +8,8 @@ const createPaymentLink = wrapAsync(async (req, res) => {
 
 const updatePaymentInformation = wrapAsync(async (req, res) => {
     const paymentLink = await paymentService.updatePaymentInformation(req.query);
-    return res.redirect(`${process.env.CLIENT_URL}/order-success`);
+    const orderId = encodeURIComponent(req.query.orderId)
+    return res.redirect(`${process.env.CLIENT_URL}/order-success?orderId=${orderId}`);
 })
 
 module.exports = {
