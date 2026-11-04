@@ -152,7 +152,6 @@ const Payment = () => {
     }
 
     const goToOrderTracking = () => {
-        window.fbq?.('trackCustom', 'TrackOrderClick', { source: 'upi_payment_confirmation' })
         navigate(`/order/${orderId}`)
     }
 

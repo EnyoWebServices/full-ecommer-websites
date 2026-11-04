@@ -19,6 +19,41 @@ const OrderSuccess = () => {
         return () => { cancelled = true }
     }, [orderId])
 
+    useEffect(() => {
+        const paymentStatus = String(order?.paymentDetails?.status || '').toUpperCase()
+        const value = Number(order?.totalPrice)
+        if (!orderId || !['PAID', 'COMPLETED'].includes(paymentStatus) || !Number.isFinite(value) || value <= 0 || typeof window.fbq !== 'function') {
+            return
+        }
+
+        const storageKey = `meta-purchase-tracked-${orderId}`
+        try {
+            if (window.localStorage.getItem(storageKey)) return
+        } catch (error) {
+            console.error('Could not check whether the Meta Purchase event was already sent.', error)
+            return
+        }
+
+        window.fbq('track', 'Purchase', {
+            value,
+            currency: 'INR',
+            order_id: orderId,
+            content_type: 'product',
+            content_ids: order.items.map(item => String(item.productId)),
+            contents: order.items.map(item => ({
+                id: String(item.productId),
+                quantity: item.quantity,
+                item_price: item.price
+            }))
+        })
+
+        try {
+            window.localStorage.setItem(storageKey, 'true')
+        } catch (error) {
+            console.error('Could not save Meta Purchase event deduplication state.', error)
+        }
+    }, [order, orderId])
+
     const paymentStatus = order?.paymentDetails?.status || 'PENDING'
     const failed = order?.status === 'PAYMENT_FAILED' || paymentStatus === 'FAILED'
     return (
