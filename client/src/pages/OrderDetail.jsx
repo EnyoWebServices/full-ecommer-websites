@@ -1,34 +1,14 @@
 import "./css/OrderDetail.css";
 import Header from "../components/Header/Header";
 import Footer from "../components/Footer/Footer";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
-import { SingleOrderApi } from "../service/Api";
+import useOrderStatus from "../hooks/useOrderStatus";
 import { trackMetaPurchase } from "../utils/metaPixel";
 
 const OrderDetail = () => {
-    const [order, setOrder] = useState(null)
-    const [orderLoadError, setOrderLoadError] = useState('')
-    const [reloadCount, setReloadCount] = useState(0)
     const { id } = useParams()
-
-    useEffect(() => {
-        let cancelled = false
-        setOrder(null)
-        setOrderLoadError('')
-        const getOrder = async () => {
-            try {
-                const loadedOrder = await SingleOrderApi(id)
-                if (!cancelled) setOrder(loadedOrder)
-            } catch (error) {
-                if (cancelled) return
-                console.error('Could not load order details.', error)
-                setOrderLoadError(error.response?.data?.message || 'Could not load order details. Please try again.')
-            }
-        }
-        getOrder();
-        return () => { cancelled = true }
-    }, [id, reloadCount])
+    const { order, error: orderLoadError, retry } = useOrderStatus(id)
 
     useEffect(() => {
         trackMetaPurchase(order)
@@ -40,7 +20,7 @@ const OrderDetail = () => {
                 <Header />
                 <div className="order-details-page" role="alert">
                     <p>{orderLoadError}</p>
-                    <button type="button" onClick={() => setReloadCount(count => count + 1)}>Retry</button>
+                    <button type="button" onClick={retry}>Retry</button>
                 </div>
                 <Footer />
             </>
@@ -61,6 +41,7 @@ const OrderDetail = () => {
         <>
             <Header />
             <div className="order-details-page">
+                {orderLoadError && <p role="alert">{orderLoadError}</p>}
                 <div className="order-details-left">
                     <>
                         <div className="order-box">

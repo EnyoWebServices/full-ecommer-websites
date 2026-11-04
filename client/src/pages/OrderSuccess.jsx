@@ -1,32 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect } from 'react'
 import "./css/orderSuccess.css"
 import Header from '../components/Header/Header'
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { SingleOrderApi } from '../service/Api'
+import useOrderStatus from '../hooks/useOrderStatus'
 import { trackMetaPurchase } from '../utils/metaPixel'
 
 const OrderSuccess = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams()
     const orderId = searchParams.get('orderId')
-    const [order, setOrder] = useState(null)
-    const [orderLoadError, setOrderLoadError] = useState('')
-
-    useEffect(() => {
-        if (!orderId) return
-        let cancelled = false
-        SingleOrderApi(orderId).then(savedOrder => {
-            if (!cancelled) {
-                setOrder(savedOrder)
-                setOrderLoadError('')
-            }
-        }).catch(error => {
-            if (cancelled) return
-            console.error('Could not load the order payment status.', error)
-            setOrderLoadError(error.response?.data?.message || 'Could not load the payment status. Please refresh to try again.')
-        })
-        return () => { cancelled = true }
-    }, [orderId])
+    const { order, error: orderLoadError } = useOrderStatus(orderId)
 
     useEffect(() => {
         trackMetaPurchase(order)
