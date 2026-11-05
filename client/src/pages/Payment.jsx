@@ -262,7 +262,6 @@ const Payment = () => {
     const buildUpiUrl = (upiIdValue, scheme = 'upi://pay') => {
         const query = new URLSearchParams({
             pa: upiIdValue,
-            pn: 'Flipkart',
             am: totalCost.toFixed(2),
             cu: 'INR',
             tn: `Order ${orderId}`,
