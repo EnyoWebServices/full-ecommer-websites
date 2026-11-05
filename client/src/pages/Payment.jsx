@@ -314,13 +314,7 @@ const Payment = () => {
         }
     }
 
-    const openUpiProvider = (option) => {
-        if (option.provider === 'phonepe') {
-            void continueToGateway()
-            return
-        }
-        beginUpiPayment({ optionId: option.id }, option.id)
-    }
+    const openUpiProvider = (option) => beginUpiPayment({ optionId: option.id }, option.id)
 
     const openCustomUpi = () => {
         if (!/^[a-z0-9][a-z0-9._-]{0,99}@[a-z0-9][a-z0-9.-]{0,29}$/i.test(upiId.trim())) {
@@ -391,10 +385,7 @@ const Payment = () => {
                                 const brandMark = { 'google-pay': 'G', phonepe: 'पे', paytm: 'P', mobikwik: 'M' }[option.provider]
                                 return <label className="payment-upi-option" key={option.id}>
                                     <input type="radio" name="upi-option" value={option.id} checked={selectedUpi === option.id} onChange={() => openUpiProvider(option)} />
-                                    <span className="payment-upi-option-name">
-                                        {option.label}
-                                        {option.provider === 'phonepe' && <small>Continue via secure checkout</small>}
-                                    </span>
+                                    <span>{option.label}</span>
                                     <span className={brandClass} aria-hidden="true">{brandMark}</span>
                                 </label>
                             })}

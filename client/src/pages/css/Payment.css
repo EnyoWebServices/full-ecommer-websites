@@ -343,18 +343,6 @@
   font-size: 16px;
 }
 
-.payment-upi-option-name {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.payment-upi-option-name small {
-  color: #667085;
-  font-size: 11px;
-}
-
 .payment-upi-option > input,
 .payment-upi-new-option label > input {
   width: 20px;

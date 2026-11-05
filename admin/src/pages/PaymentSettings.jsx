@@ -66,7 +66,7 @@ const PaymentSettings = () => {
                     <section className="payment-settings-access">
                         <div>
                             <h2>UPI payment options</h2>
-                            <p>Manage the app providers and UPI IDs shown during checkout.</p>
+                            <p>Choose the app, payee UPI ID, and display name. Enabled options appear at checkout and open the selected UPI app directly.</p>
                         </div>
                         <div className="payment-settings-key-row">
                     <span className="text-sm font-medium text-slate-700">Admin session active</span>
