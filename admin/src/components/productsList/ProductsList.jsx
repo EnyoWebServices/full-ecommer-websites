@@ -9,6 +9,7 @@ const upiEventLabels = {
     REQUEST_CREATED: 'Payment request created',
     INTENT_LAUNCHED: 'UPI app launch requested',
     APP_RETURNED: 'Browser returned from UPI app (not payment verification)',
+    APP_CALLBACK_RECEIVED: 'UPI app callback data received (not payment verification)',
     CUSTOMER_REPORTED_PAID: 'Customer reported payment completed',
     CUSTOMER_REPORTED_NOT_PAID: 'Customer reported payment not completed',
     ADMIN_CONFIRMED: 'Admin confirmed payment',
@@ -236,6 +237,7 @@ const ProductsList = ({ orderColumns, products, orders, totalPages = 1, totalPro
                                                                 {event.appScheme && <p>App scheme: {event.appScheme}</p>}
                                                                 {event.returnDelayMs != null && <p>Time away: {Math.round(event.returnDelayMs / 1000)} seconds (browser-reported)</p>}
                                                                 {event.transactionReference && <p>Reference: {event.transactionReference}</p>}
+                                                                {event.callbackData?.map(item => <p key={item.key}>{item.key.replaceAll(/([A-Z])/g, ' $1')}: {item.value}</p>)}
                                                                 {event.userAgent && <p className="break-all text-slate-400">Browser: {event.userAgent}</p>}
                                                                 {event.actorId && <p>Admin account: {event.actorId}</p>}
                                                             </li>)}

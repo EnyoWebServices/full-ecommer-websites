@@ -30,6 +30,13 @@ const upiPaymentEventSchema = new mongoose.Schema({
     provider: { type: String, default: "" },
     appScheme: { type: String, default: "" },
     returnDelayMs: { type: Number, default: null },
+    callbackData: [{
+        key: {
+            type: String,
+            enum: ["status", "transactionId", "transactionReference", "approvalReference", "responseCode", "responseMessage", "amount", "currency"]
+        },
+        value: { type: String, maxlength: 256 }
+    }],
     transactionReference: { type: String, default: "" },
     userAgent: { type: String, default: "" },
     actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }

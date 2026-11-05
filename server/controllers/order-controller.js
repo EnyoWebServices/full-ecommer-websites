@@ -209,6 +209,7 @@ module.exports.recordUpiPaymentEvent = wrapAsync(async (req, res) => {
 
     order.upiPaymentEvents.push({
         ...result.value,
+        callbackData: result.value.callbackData,
         provider: order.upiPaymentRequest.provider,
         userAgent: String(req.get("user-agent") || "").slice(0, 300),
         occurredAt: new Date()

@@ -21,6 +21,42 @@ import { expireUpiPaymentRequest, fetchUpiOptions, markUpiPaymentNotCompleted, r
 import { useAppBack } from '../hooks/useAppBack'
 import './css/Payment.css'
 
+const UPI_CALLBACK_KEYS = new Set([
+    'status',
+    'txnid',
+    'transactionid',
+    'txnref',
+    'transactionref',
+    'approvalrefno',
+    'responsecode',
+    'responsemessage',
+    'txnstatus',
+    'transactionstatus',
+    'amount',
+    'currency'
+])
+
+const readUpiCallbackData = () => {
+    const callbackData = {}
+    const hash = window.location.hash
+    const hashQuery = hash.includes('?')
+        ? hash.slice(hash.indexOf('?') + 1)
+        : hash.slice(1).includes('=')
+            ? hash.slice(1)
+            : ''
+    const sources = [window.location.search, hashQuery]
+    for (const source of sources) {
+        const params = new URLSearchParams(source)
+        for (const [key, value] of params) {
+            const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+            if (UPI_CALLBACK_KEYS.has(normalizedKey) && value.trim()) {
+                callbackData[key] = value.slice(0, 256)
+            }
+        }
+    }
+    return callbackData
+}
+
 const readStoredAmount = () => {
     try {
         return JSON.parse(sessionStorage.getItem('pendingPaymentAmount') || '{}')
@@ -124,14 +160,30 @@ const Payment = () => {
                 if (intent.active) intent.hidden = true
                 return
             }
-            if (!intent.active || !intent.hidden) return
+            let storedIntent
+            try {
+                storedIntent = JSON.parse(sessionStorage.getItem('pendingUpiIntent') || 'null')
+            } catch {
+                storedIntent = null
+            }
+            const storedIntentIsCurrent = storedIntent?.orderId === orderId
+                && Number.isFinite(storedIntent.launchedAt)
+                && storedIntent.launchedAt <= Date.now()
+                && Date.now() - storedIntent.launchedAt <= 15 * 60 * 1000
+            if (!(intent.active && intent.hidden) && !storedIntentIsCurrent) return
 
-            const returnDelayMs = Math.max(0, Math.min(Date.now() - intent.launchedAt, 15 * 60 * 1000))
+            const launchedAt = intent.active ? intent.launchedAt : storedIntent.launchedAt
+            const returnDelayMs = Math.max(0, Math.min(Date.now() - launchedAt, 15 * 60 * 1000))
+            const appScheme = intent.active ? intent.appScheme : storedIntent.appScheme
             upiIntentState.current = { active: false, hidden: false, launchedAt: 0 }
+            sessionStorage.removeItem('pendingUpiIntent')
+            const callbackData = readUpiCallbackData()
+            const hasCallbackData = Object.keys(callbackData).length > 0
             recordUpiPaymentEvent(orderId, {
-                type: 'APP_RETURNED',
-                appScheme: intent.appScheme,
-                returnDelayMs
+                type: hasCallbackData ? 'APP_CALLBACK_RECEIVED' : 'APP_RETURNED',
+                appScheme,
+                returnDelayMs,
+                callbackData
             }).catch(error => {
                 toast.error(error.response?.data?.message || 'Could not save the UPI app return activity')
             })
@@ -139,6 +191,7 @@ const Payment = () => {
 
         document.addEventListener('visibilitychange', recordAppReturn)
         window.addEventListener('pageshow', recordAppReturn)
+        recordAppReturn()
         return () => {
             document.removeEventListener('visibilitychange', recordAppReturn)
             window.removeEventListener('pageshow', recordAppReturn)
@@ -235,6 +288,15 @@ const Payment = () => {
             toast.error(error.response?.data?.message || 'Could not save the UPI app launch activity')
         }
         upiIntentState.current = { active: true, hidden: false, launchedAt: Date.now(), appScheme }
+        try {
+            sessionStorage.setItem('pendingUpiIntent', JSON.stringify({
+                orderId,
+                appScheme,
+                launchedAt: Date.now()
+            }))
+        } catch {
+            toast.error('Could not preserve UPI app return tracking in this browser')
+        }
         window.location.href = buildUpiUrl(request.upiId, scheme)
     }
 
