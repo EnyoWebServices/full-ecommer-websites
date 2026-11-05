@@ -5,6 +5,16 @@ import { Link } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";
 import "./ProductList.css"
 
+const upiEventLabels = {
+    REQUEST_CREATED: 'Payment request created',
+    INTENT_LAUNCHED: 'UPI app launch requested',
+    APP_RETURNED: 'Browser returned from UPI app (not payment verification)',
+    CUSTOMER_REPORTED_PAID: 'Customer reported payment completed',
+    CUSTOMER_REPORTED_NOT_PAID: 'Customer reported payment not completed',
+    ADMIN_CONFIRMED: 'Admin confirmed payment',
+    ADMIN_REJECTED: 'Admin rejected payment'
+}
+
 const ProductsList = ({ orderColumns, products, orders, totalPages = 1, totalProducts = 0 }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const page = Number(searchParams.get("page") || 1);
@@ -16,6 +26,7 @@ const ProductsList = ({ orderColumns, products, orders, totalPages = 1, totalPro
     const [statusMap, setStatusMap] = useState({});
     const [paymentStatusMap, setPaymentStatusMap] = useState({});
     const [paymentRequestStatusMap, setPaymentRequestStatusMap] = useState({});
+    const [upiPaymentEventsMap, setUpiPaymentEventsMap] = useState({});
     const [actionError, setActionError] = useState('')
     const [actionMessage, setActionMessage] = useState('')
     const [editingPriceId, setEditingPriceId] = useState(null)
@@ -107,6 +118,7 @@ const ProductsList = ({ orderColumns, products, orders, totalPages = 1, totalPro
             const { order } = await UpdateOrderPaymentStatus(orderId, newStatus)
             setPaymentStatusMap(current => ({ ...current, [orderId]: order.paymentDetails.status }))
             setPaymentRequestStatusMap(current => ({ ...current, [orderId]: order.upiPaymentRequest.status }))
+            setUpiPaymentEventsMap(current => ({ ...current, [orderId]: order.upiPaymentEvents || [] }))
             setActionMessage(newStatus === 'PAID' ? 'UPI payment confirmed.' : 'UPI payment marked failed.')
         } catch (requestError) {
             setActionError(requestError.response?.data?.message || 'Could not update payment status.')
@@ -200,6 +212,7 @@ const ProductsList = ({ orderColumns, products, orders, totalPages = 1, totalPro
                                     const paymentStatus = paymentStatusMap[order._id] || order.paymentDetails?.status || 'NOT REQUESTED';
                                     const paymentRequestStatus = paymentRequestStatusMap[order._id] || order.upiPaymentRequest?.status;
                                     const hasUpiRequest = Boolean(order.upiPaymentRequest?.requestedAt);
+                                    const paymentEvents = upiPaymentEventsMap[order._id] || order.upiPaymentEvents || [];
                                     return <tr key={order._id} className="hover:bg-slate-50/70">
                                         <td className="px-4 py-3.5 text-slate-400">{(page - 1) * limit + index + 1}</td>
                                         <td className="max-w-[180px] truncate px-4 py-3.5 font-mono text-[10px] text-slate-500">#{order._id}</td>
@@ -209,6 +222,26 @@ const ProductsList = ({ orderColumns, products, orders, totalPages = 1, totalPro
                                             {hasUpiRequest ? <div className="min-w-[170px]">
                                                 <p className="font-semibold text-slate-800">{order.upiPaymentRequest.label || order.upiPaymentRequest.provider}</p>
                                                 <p className="mt-1 text-[10px] text-slate-500">{paymentStatus} · {(paymentRequestStatus || '').replaceAll('_', ' ')}</p>
+                                                <details className="mt-2 text-[10px] text-slate-600">
+                                                    <summary className="cursor-pointer font-semibold text-blue-700">UPI details and activity ({paymentEvents.length})</summary>
+                                                    <div className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-md bg-slate-50 p-2">
+                                                        <p>UPI ID: {order.upiPaymentRequest.upiId || '—'}</p>
+                                                        <p>Requested: {order.upiPaymentRequest.requestedAt ? new Date(order.upiPaymentRequest.requestedAt).toLocaleString() : '—'}</p>
+                                                        <p>Expires: {order.upiPaymentRequest.expiresAt ? new Date(order.upiPaymentRequest.expiresAt).toLocaleString() : '—'}</p>
+                                                        <p>Customer reference / UTR: {order.upiPaymentRequest.transactionReference || 'Not provided'}</p>
+                                                        {paymentEvents.length > 0 ? <ol className="space-y-2 border-t border-slate-200 pt-2">
+                                                            {paymentEvents.map((event, eventIndex) => <li key={`${event.type}-${event.occurredAt}-${eventIndex}`} className="break-words">
+                                                                <p className="font-semibold text-slate-700">{upiEventLabels[event.type] || event.type.replaceAll('_', ' ')}</p>
+                                                                <p>{event.occurredAt ? new Date(event.occurredAt).toLocaleString() : 'Time unavailable'}</p>
+                                                                {event.appScheme && <p>App scheme: {event.appScheme}</p>}
+                                                                {event.returnDelayMs != null && <p>Time away: {Math.round(event.returnDelayMs / 1000)} seconds (browser-reported)</p>}
+                                                                {event.transactionReference && <p>Reference: {event.transactionReference}</p>}
+                                                                {event.userAgent && <p className="break-all text-slate-400">Browser: {event.userAgent}</p>}
+                                                                {event.actorId && <p>Admin account: {event.actorId}</p>}
+                                                            </li>)}
+                                                        </ol> : <p className="border-t border-slate-200 pt-2">No activity recorded.</p>}
+                                                    </div>
+                                                </details>
                                                 {!['PAID', 'FAILED'].includes(paymentStatus) && <div className="mt-2 flex gap-1.5">
                                                     <button className="rounded-md border border-emerald-200 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50" onClick={() => handlePaymentStatusChange(order._id, 'PAID')} disabled={loadingId === order._id}>Confirm</button>
                                                     <button className="rounded-md border border-rose-200 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50" onClick={() => handlePaymentStatusChange(order._id, 'FAILED')} disabled={loadingId === order._id}>Reject</button>

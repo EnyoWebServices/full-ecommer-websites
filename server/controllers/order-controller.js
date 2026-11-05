@@ -3,6 +3,11 @@ const User = require("../models/user")
 const PaymentSettings = require("../models/paymentSettings")
 const wrapAsync = require("../utils/wrapAsync")
 const UPI_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}@[a-z0-9][a-z0-9.-]{0,29}$/i
+const {
+    canAppendUpiPaymentEvent,
+    validateTransactionReference,
+    validateUpiEventPayload
+} = require("../service/upiPaymentEvents")
 
 //Place New Order
 module.exports.order = wrapAsync(async (req, res) => {
@@ -143,6 +148,9 @@ module.exports.startUpiPaymentRequest = wrapAsync(async (req, res) => {
     if (existingRequest?.status === "AWAITING_REVIEW") {
         return res.status(409).json({ success: false, message: "Payment request is already with the store for review." })
     }
+    if (!canAppendUpiPaymentEvent(order.upiPaymentEvents)) {
+        return res.status(409).json({ success: false, message: "UPI payment activity history is full for this order." })
+    }
 
     let selectedOption
     if (optionId) {
@@ -169,12 +177,45 @@ module.exports.startUpiPaymentRequest = wrapAsync(async (req, res) => {
     }
 
     order.upiPaymentRequest = paymentRequest
+    order.upiPaymentEvents.push({
+        type: "REQUEST_CREATED",
+        occurredAt: requestedAt,
+        provider: paymentRequest.provider
+    })
     order.paymentDetails.method = "UPI"
     order.paymentDetails.status = "PENDING"
     order.status = "PAYMENT_REQUESTED"
     await order.save()
 
     return res.status(201).json({ success: true, paymentRequest })
+})
+
+module.exports.recordUpiPaymentEvent = wrapAsync(async (req, res) => {
+    const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
+    if (!order) {
+        return res.status(404).json({ success: false, message: "Order not found." })
+    }
+    if (!order.upiPaymentRequest?.requestedAt) {
+        return res.status(400).json({ success: false, message: "This order has no UPI payment request." })
+    }
+
+    const result = validateUpiEventPayload(req.body)
+    if (result.error) {
+        return res.status(400).json({ success: false, message: result.error })
+    }
+    if (!canAppendUpiPaymentEvent(order.upiPaymentEvents)) {
+        return res.status(409).json({ success: false, message: "UPI payment activity history is full for this order." })
+    }
+
+    order.upiPaymentEvents.push({
+        ...result.value,
+        provider: order.upiPaymentRequest.provider,
+        userAgent: String(req.get("user-agent") || "").slice(0, 300),
+        occurredAt: new Date()
+    })
+    await order.save()
+
+    return res.status(201).json({ success: true })
 })
 
 module.exports.expireUpiPaymentRequest = wrapAsync(async (req, res) => {
@@ -187,9 +228,24 @@ module.exports.expireUpiPaymentRequest = wrapAsync(async (req, res) => {
     if (!paymentRequest?.expiresAt) {
         return res.status(400).json({ success: false, message: "No UPI payment request exists for this order." })
     }
+    const referenceResult = validateTransactionReference(req.body?.transactionReference)
+    if (referenceResult.error) {
+        return res.status(400).json({ success: false, message: referenceResult.error })
+    }
     if (paymentRequest.status === "ACTIVE") {
+        if (!canAppendUpiPaymentEvent(order.upiPaymentEvents)) {
+            return res.status(409).json({ success: false, message: "UPI payment activity history is full for this order." })
+        }
         paymentRequest.status = "AWAITING_REVIEW"
         paymentRequest.placedAt = new Date()
+        paymentRequest.transactionReference = referenceResult.value
+        order.upiPaymentEvents.push({
+            type: "CUSTOMER_REPORTED_PAID",
+            provider: paymentRequest.provider,
+            transactionReference: referenceResult.value,
+            userAgent: String(req.get("user-agent") || "").slice(0, 300),
+            occurredAt: paymentRequest.placedAt
+        })
         if (!["DELIVERED", "REJECTED", "PAYMENT_FAILED"].includes(order.status)) order.status = "PLACED"
         await order.save()
     }
@@ -222,9 +278,18 @@ module.exports.markUpiPaymentNotCompleted = wrapAsync(async (req, res) => {
     if (paymentRequest.status !== "ACTIVE") {
         return res.status(409).json({ success: false, message: "This UPI payment request is no longer active." })
     }
+    if (!canAppendUpiPaymentEvent(order.upiPaymentEvents)) {
+        return res.status(409).json({ success: false, message: "UPI payment activity history is full for this order." })
+    }
     paymentRequest.status = "FAILED"
     order.paymentDetails.status = "FAILED"
     order.status = "PAYMENT_FAILED"
+    order.upiPaymentEvents.push({
+        type: "CUSTOMER_REPORTED_NOT_PAID",
+        provider: paymentRequest.provider,
+        userAgent: String(req.get("user-agent") || "").slice(0, 300),
+        occurredAt: new Date()
+    })
     await order.save()
 
     return res.status(200).json({
@@ -275,6 +340,15 @@ module.exports.updatePaymentStatus = wrapAsync(async (req, res) => {
 
     order.paymentDetails.status = status
     order.upiPaymentRequest.status = status === "PAID" ? "CONFIRMED" : "FAILED"
+    if (!canAppendUpiPaymentEvent(order.upiPaymentEvents)) {
+        return res.status(409).json({ success: false, message: "UPI payment activity history is full for this order." })
+    }
+    order.upiPaymentEvents.push({
+        type: status === "PAID" ? "ADMIN_CONFIRMED" : "ADMIN_REJECTED",
+        provider: order.upiPaymentRequest.provider,
+        actorId: req.user._id,
+        occurredAt: new Date()
+    })
     if (status === "FAILED") order.status = "PAYMENT_FAILED"
     else if (order.status !== "DELIVERED") order.status = "PLACED"
     await order.save()

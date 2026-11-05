@@ -17,7 +17,7 @@ import {
     Smile
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { expireUpiPaymentRequest, fetchUpiOptions, markUpiPaymentNotCompleted, SingleOrderApi, startUpiPaymentRequest, toPaymentGateway } from '../service/Api'
+import { expireUpiPaymentRequest, fetchUpiOptions, markUpiPaymentNotCompleted, recordUpiPaymentEvent, SingleOrderApi, startUpiPaymentRequest, toPaymentGateway } from '../service/Api'
 import { useAppBack } from '../hooks/useAppBack'
 import './css/Payment.css'
 
@@ -48,7 +48,9 @@ const Payment = () => {
     const [remainingSeconds, setRemainingSeconds] = useState(300)
     const [resolvingPayment, setResolvingPayment] = useState(false)
     const [showOrderPlaced, setShowOrderPlaced] = useState(false)
+    const [transactionReference, setTransactionReference] = useState('')
     const expiryRequestInFlight = useRef(false)
+    const upiIntentState = useRef({ active: false, hidden: false, launchedAt: 0 })
     const orderId = location.state?.orderId || sessionStorage.getItem('pendingPaymentOrderId')
     const storedAmount = readStoredAmount()
     const totalCost = Number(location.state?.totalCost ?? storedAmount.totalCost ?? 0)
@@ -115,12 +117,40 @@ const Payment = () => {
         }
     }, [activePaymentRequest?.expiresAt])
 
+    useEffect(() => {
+        const recordAppReturn = () => {
+            const intent = upiIntentState.current
+            if (document.visibilityState === 'hidden') {
+                if (intent.active) intent.hidden = true
+                return
+            }
+            if (!intent.active || !intent.hidden) return
+
+            const returnDelayMs = Math.max(0, Math.min(Date.now() - intent.launchedAt, 15 * 60 * 1000))
+            upiIntentState.current = { active: false, hidden: false, launchedAt: 0 }
+            recordUpiPaymentEvent(orderId, {
+                type: 'APP_RETURNED',
+                appScheme: intent.appScheme,
+                returnDelayMs
+            }).catch(error => {
+                toast.error(error.response?.data?.message || 'Could not save the UPI app return activity')
+            })
+        }
+
+        document.addEventListener('visibilitychange', recordAppReturn)
+        window.addEventListener('pageshow', recordAppReturn)
+        return () => {
+            document.removeEventListener('visibilitychange', recordAppReturn)
+            window.removeEventListener('pageshow', recordAppReturn)
+        }
+    }, [orderId])
+
     const confirmUpiPayment = async () => {
         if (expiryRequestInFlight.current) return
         expiryRequestInFlight.current = true
         setResolvingPayment(true)
         try {
-            await expireUpiPaymentRequest(orderId)
+            await expireUpiPaymentRequest(orderId, transactionReference)
             sessionStorage.removeItem('pendingPaymentOrderId')
             sessionStorage.removeItem('pendingPaymentAmount')
             setActivePaymentRequest(null)
@@ -196,8 +226,16 @@ const Payment = () => {
         custom: 'upi://pay'
     }
 
-    const openUpiApp = (request) => {
-        window.location.href = buildUpiUrl(request.upiId, appSchemes[request.provider] || 'upi://pay')
+    const openUpiApp = async (request) => {
+        const scheme = appSchemes[request.provider] || 'upi://pay'
+        const appScheme = scheme.split(':')[0]
+        try {
+            await recordUpiPaymentEvent(orderId, { type: 'INTENT_LAUNCHED', appScheme })
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Could not save the UPI app launch activity')
+        }
+        upiIntentState.current = { active: true, hidden: false, launchedAt: Date.now(), appScheme }
+        window.location.href = buildUpiUrl(request.upiId, scheme)
     }
 
     const beginUpiPayment = async (requestBody, selectedValue) => {
@@ -207,7 +245,7 @@ const Payment = () => {
             expiryRequestInFlight.current = false
             setSelectedUpi(selectedValue)
             setActivePaymentRequest(request)
-            window.setTimeout(() => openUpiApp(request), 350)
+            window.setTimeout(() => { void openUpiApp(request) }, 350)
         } catch (error) {
             toast.error(error.response?.data?.message || 'Could not start the UPI payment request')
         } finally {
@@ -369,11 +407,23 @@ const Payment = () => {
                     <p className="upi-timer-description">{remainingSeconds > 240 ? 'The payment app may open separately. Return here whenever you’re ready; the timer stays attached to your order.' : 'You can confirm your payment status now. The timer will keep running until it ends.'}</p>
                     <strong className="upi-timer-countdown" aria-live="polite">{String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:{String(remainingSeconds % 60).padStart(2, '0')}</strong>
                     {remainingSeconds > 0 && <>
-                        <button className="upi-timer-open-app" type="button" onClick={() => openUpiApp(activePaymentRequest)}>
+                        <button className="upi-timer-open-app" type="button" onClick={() => { void openUpiApp(activePaymentRequest) }}>
                             Open {activePaymentRequest.label} again <ExternalLink size={16} />
                         </button>
                     </>}
                     {remainingSeconds <= 240 && <div className="upi-timer-result-actions">
+                        <label className="upi-transaction-reference">
+                            UPI transaction ID / UTR (optional)
+                            <input
+                                type="text"
+                                value={transactionReference}
+                                onChange={event => setTransactionReference(event.target.value)}
+                                maxLength={50}
+                                autoComplete="off"
+                                placeholder="Enter the reference from your UPI receipt"
+                            />
+                            <span className="upi-timer-note">This reference is stored for review; it does not automatically verify payment.</span>
+                        </label>
                         <button className="upi-payment-done-button" type="button" onClick={confirmUpiPayment} disabled={resolvingPayment}>
                             {resolvingPayment ? 'Updating order…' : 'Payment done'}
                         </button>

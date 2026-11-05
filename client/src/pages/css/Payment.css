@@ -607,6 +607,30 @@
   margin-top: 4px;
 }
 
+.upi-transaction-reference {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.upi-transaction-reference input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid #d4dbe5;
+  border-radius: 6px;
+  color: #252525;
+  font: inherit;
+}
+
+.upi-transaction-reference input:focus {
+  border-color: #2167e8;
+  outline: 2px solid #2167e833;
+}
+
 .upi-payment-done-button,
 .upi-payment-not-done-button {
   min-height: 44px;

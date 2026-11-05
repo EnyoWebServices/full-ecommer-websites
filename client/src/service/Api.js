@@ -50,8 +50,13 @@ export const startUpiPaymentRequest = async (orderId, request) => {
     return data.paymentRequest
 }
 
-export const expireUpiPaymentRequest = async (orderId) => {
-    const { data } = await axiosInstance.post(`/order/${orderId}/upi-payment-expired`)
+export const recordUpiPaymentEvent = async (orderId, event) => {
+    const { data } = await axiosInstance.post(`/order/${orderId}/upi-payment-events`, event)
+    return data
+}
+
+export const expireUpiPaymentRequest = async (orderId, transactionReference = '') => {
+    const { data } = await axiosInstance.post(`/order/${orderId}/upi-payment-expired`, { transactionReference })
     return data
 }
 
